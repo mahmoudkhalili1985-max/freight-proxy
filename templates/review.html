@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>پنل بررسی مدیر</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Tahoma, Arial, sans-serif; background: #f0f2f5; }
+
+.topbar { background: #1a1a2e; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 100; }
+.topbar h1 { font-size: 15px; font-weight: bold; }
+.topbar .info { font-size: 12px; color: #aaa; }
+.topbar .actions { margin-right: auto; display: flex; gap: 8px; }
+
+.btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; border: none; font-family: Tahoma; font-weight: bold; }
+.btn-approve { background: #22c55e; color: #fff; }
+.btn-approve:hover { background: #16a34a; }
+.btn-send { background: #f59e0b; color: #fff; }
+.btn-send:hover { background: #d97706; }
+.btn-back { background: transparent; color: #ccc; border: 1px solid #555; }
+.btn-back:hover { color: #fff; border-color: #fff; }
+
+.page { max-width: 960px; margin: 0 auto; padding: 20px; }
+
+.summary { background: #fff; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.metric { text-align: center; }
+.metric label { font-size: 11px; color: #888; display: block; margin-bottom: 4px; }
+.metric span { font-size: 22px; font-weight: bold; color: #1a1a2e; }
+
+.dest-card { background: #fff; border-radius: 10px; margin-bottom: 14px; overflow: hidden; border: 1px solid #e5e7eb; }
+.dest-header { background: #1a1a2e; color: #fff; padding: 10px 16px; }
+.dest-header .name { font-size: 15px; font-weight: bold; }
+.dest-header .addr { font-size: 11px; color: #bbb; margin-top: 2px; }
+
+.orders-wrap { padding: 12px 16px; }
+
+.order-row { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+.order-row.needs-decision { border-color: #fbbf24; background: #fffbeb; }
+.order-row.approved { border-color: #86efac; background: #f0fdf4; }
+
+.order-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.tag { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+.tag-order { background: #e0e7ff; color: #3730a3; }
+.tag-waybill { background: #dcfce7; color: #15803d; font-family: monospace; }
+.tag-warn { background: #fef3c7; color: #92400e; }
+.tag-ok { background: #dcfce7; color: #15803d; }
+
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 11px; color: #666; }
+.field input, .field select { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-family: Tahoma; background: #fff; }
+.field input:focus, .field select:focus { outline: none; border-color: #1a1a2e; }
+.field input[readonly] { background: #f9fafb; color: #555; }
+
+.decision-notice { font-size: 12px; color: #92400e; background: #fef3c7; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; }
+
+.approve-btn { margin-top: 10px; padding: 6px 14px; background: #1a1a2e; color: #fff; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: Tahoma; }
+.approve-btn:hover { background: #2d2d5e; }
+.approve-btn.approved { background: #22c55e; }
+
+.no-data { text-align: center; padding: 60px; color: #888; }
+
+/* چاپ */
+@media print {
+  .topbar, .btn, .summary, .approve-btn { display: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>📋 پنل بررسی مدیر</h1>
+  <div class="info" id="topInfo">—</div>
+  <div class="actions">
+    <button class="btn btn-back" onclick="window.location.href='/'">← بازگشت</button>
+    <button class="btn btn-approve" onclick="approveAll()">✓ تأیید همه</button>
+    <button class="btn btn-send" onclick="sendToOperator()">ارسال به متصدی →</button>
+  </div>
+</div>
+
+<div class="page">
+  <div class="summary" id="summary"></div>
+  <div id="destList"><div class="no-data">در حال بارگذاری...</div></div>
+</div>
+
+<script>
+let freightData = null;
+
+window.onload = () => {
+  const raw = sessionStorage.getItem("freight_data");
+  if (!raw) {
+    document.getElementById("destList").innerHTML = '<div class="no-data">داده‌ای یافت نشد. <a href="/">بازگشت به آپلود</a></div>';
+    return;
+  }
+  freightData = JSON.parse(raw);
+  render();
+};
+
+function render() {
+  const d = freightData;
+  const mill = d.mill === "arfeh" ? "فولاد ارفع" : "چادرملو";
+  document.getElementById("topInfo").textContent = `${mill} — تاریخ: ${d.date}`;
+
+  // خلاصه
+  const totalDest = d.destinations.length;
+  const totalOrders = d.destinations.reduce((s, dest) => s + dest.orders.length, 0);
+  const totalCount = d.destinations.reduce((s, dest) => dest.orders.reduce((ss, o) => ss + (o.count||0), ss), 0);
+  const needsDecision = d.destinations.reduce((s, dest) => dest.orders.reduce((ss, o) => ss + (o.needs_manager_decision ? 1 : 0), ss), 0);
+
+  document.getElementById("summary").innerHTML = `
+    <div class="metric"><label>تاریخ</label><span style="font-size:14px">${d.date}</span></div>
+    <div class="metric"><label>تعداد مقصد</label><span>${totalDest}</span></div>
+    <div class="metric"><label>کل سفارشات</label><span>${totalOrders}</span></div>
+    <div class="metric"><label>نیاز به تصمیم</label><span style="color:${needsDecision>0?'#f59e0b':'#22c55e'}">${needsDecision}</span></div>
+  `;
+
+  // کارت‌های مقصد
+  const html = d.destinations.map((dest, di) => {
+    const ordersHtml = dest.orders.map((o, oi) => renderOrder(o, di, oi, d.mill)).join("");
+    const addr = dest.address || "";
+    return `
+      <div class="dest-card" id="dest-${di}">
+        <div class="dest-header">
+          <div class="name">${di+1}. ${dest.customer}</div>
+          ${addr ? `<div class="addr">📍 ${addr}</div>` : ""}
+        </div>
+        <div class="orders-wrap">${ordersHtml}</div>
+      </div>`;
+  }).join("");
+
+  document.getElementById("destList").innerHTML = html || '<div class="no-data">مقصدی یافت نشد</div>';
+}
+
+function renderOrder(o, di, oi, mill) {
+  const cls = o.needs_manager_decision ? "needs-decision" : (o.manager_approved ? "approved" : "");
+
+  if (mill === "arfeh") {
+    const wTon = o.weight_kg ? (o.weight_kg / 1000).toFixed(0) : "—";
+    return `
+      <div class="order-row ${cls}" id="order-${o.id}">
+        <div class="order-header">
+          <span class="tag tag-order">سفارش: ${o.order_number}</span>
+          <span class="tag tag-waybill">${o.waybill_from} تا ${o.waybill_to}</span>
+          <span class="tag ${o.manager_approved?'tag-ok':'tag-warn'}">${o.count} حواله</span>
+        </div>
+        <div class="fields">
+          <div class="field"><label>شماره سفارش</label>
+            <input type="text" value="${o.order_number}" onchange="update('${o.id}','order_number',this.value)"></div>
+          <div class="field"><label>حواله از</label>
+            <input type="text" value="${o.waybill_from}" onchange="update('${o.id}','waybill_from',this.value)"></div>
+          <div class="field"><label>حواله تا</label>
+            <input type="text" value="${o.waybill_to}" onchange="update('${o.id}','waybill_to',this.value)"></div>
+          <div class="field"><label>تعداد</label>
+            <input type="number" value="${o.count}" onchange="update('${o.id}','count',parseInt(this.value))"></div>
+          <div class="field"><label>وزن (کیلوگرم)</label>
+            <input type="number" value="${o.weight_kg}" onchange="update('${o.id}','weight_kg',parseInt(this.value))"></div>
+          <div class="field"><label>گرید</label>
+            <input type="text" value="${o.grade||''}" onchange="update('${o.id}','grade',this.value)"></div>
+          <div class="field"><label>یادداشت مقصد</label>
+            <input type="text" value="${o.notes||''}" placeholder="نام کوتاه مقصد برای چاپ" onchange="update('${o.id}','notes',this.value)"></div>
+        </div>
+        <button class="approve-btn ${o.manager_approved?'approved':''}" onclick="toggleApprove('${o.id}')">
+          ${o.manager_approved ? '✓ تأیید شده' : 'تأیید این سفارش'}
+        </button>
+      </div>`;
+  } else {
+    // چادرملو
+    const warn = o.needs_manager_decision ? `<div class="decision-notice">⚠️ ظرفیت ۲۹ تن — لطفاً مشخص کنید: آزاد است یا محدود؟</div>` : "";
+    return `
+      <div class="order-row ${cls}" id="order-${o.id}">
+        <div class="order-header">
+          <span class="tag tag-order">دستور: ${o.delivery_order_short || o.delivery_order}</span>
+          <span class="tag tag-waybill">${o.permit_from} تا ${o.permit_to}</span>
+          <span class="tag ${o.manager_approved?'tag-ok':'tag-warn'}">${o.count} مجوز</span>
+          ${o.tonnage_restricted ? '<span class="tag" style="background:#fee2e2;color:#991b1b">🔴 تناژدار</span>' : '<span class="tag" style="background:#e0f2fe;color:#0369a1">🔵 آزاد</span>'}
+        </div>
+        ${warn}
+        <div class="fields">
+          <div class="field"><label>دستور تحویل (کامل)</label>
+            <input type="text" value="${o.delivery_order}" onchange="update('${o.id}','delivery_order',this.value);update('${o.id}','delivery_order_short',this.value.slice(-4))"></div>
+          <div class="field"><label>سریال از</label>
+            <input type="text" value="${o.permit_from}" onchange="update('${o.id}','permit_from',this.value)"></div>
+          <div class="field"><label>سریال تا</label>
+            <input type="text" value="${o.permit_to}" onchange="update('${o.id}','permit_to',this.value)"></div>
+          <div class="field"><label>تعداد</label>
+            <input type="number" value="${o.count}" onchange="update('${o.id}','count',parseInt(this.value))"></div>
+          <div class="field"><label>ظرفیت نهایی</label>
+            <select onchange="update('${o.id}','final_capacity',this.value)">
+              <option value="" ${!o.final_capacity?'selected':''}>انتخاب کنید...</option>
+              <option value="آزاد" ${o.final_capacity==='آزاد'?'selected':''}>آزاد (بدون محدودیت)</option>
+              <option value="25 تن" ${o.final_capacity==='25 تن'?'selected':''}>۲۵ تن (مهر)</option>
+              <option value="27 تن" ${o.final_capacity==='27 تن'?'selected':''}>۲۷ تن (مهر)</option>
+              <option value="29 تن" ${o.final_capacity==='29 تن'?'selected':''}>۲۹ تن (مهر)</option>
+            </select></div>
+          <div class="field"><label>ابعاد شمش</label>
+            <input type="text" value="${o.billet_size||''}" readonly></div>
+          <div class="field"><label>گرید</label>
+            <input type="text" value="${o.grade||''}" readonly></div>
+        </div>
+        <button class="approve-btn ${o.manager_approved?'approved':''}" onclick="toggleApprove('${o.id}')">
+          ${o.manager_approved ? '✓ تأیید شده' : 'تأیید این سفارش'}
+        </button>
+      </div>`;
+  }
+}
+
+// ─── توابع کمکی ──────────────────────────────────────────────────────────────
+function findOrder(id) {
+  for (const dest of freightData.destinations)
+    for (const o of dest.orders)
+      if (o.id === id) return o;
+  return null;
+}
+
+function update(id, field, value) {
+  const o = findOrder(id);
+  if (o) o[field] = value;
+}
+
+function toggleApprove(id) {
+  const o = findOrder(id);
+  if (!o) return;
+  o.manager_approved = !o.manager_approved;
+  // اگر ۲۹ تن بود و ظرفیت انتخاب شده، needs_manager_decision را پاک می‌کنیم
+  if (o.manager_approved && o.final_capacity) o.needs_manager_decision = false;
+  sessionStorage.setItem("freight_data", JSON.stringify(freightData));
+  render();
+}
+
+function approveAll() {
+  for (const dest of freightData.destinations)
+    for (const o of dest.orders)
+      o.manager_approved = true;
+  sessionStorage.setItem("freight_data", JSON.stringify(freightData));
+  render();
+}
+
+function sendToOperator() {
+  const unapproved = freightData.destinations.reduce((s, dest) =>
+    s + dest.orders.filter(o => !o.manager_approved).length, 0);
+
+  if (unapproved > 0) {
+    if (!confirm(`${unapproved} سفارش هنوز تأیید نشده. آیا ادامه می‌دهید؟`)) return;
+  }
+
+  sessionStorage.setItem("freight_data", JSON.stringify(freightData));
+
+  // ذخیره روی سرور
+  fetch("/api/save", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(freightData)
+  }).then(() => {
+    window.location.href = "/operator";
+  });
+}
+</script>
+</body>
+</html>

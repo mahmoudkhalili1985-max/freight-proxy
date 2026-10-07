@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>پنل متصدی چاپ</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Tahoma, Arial, sans-serif; background: #f0f2f5; }
+
+.topbar { background: #1a1a2e; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 100; }
+.topbar h1 { font-size: 15px; font-weight: bold; }
+.topbar .info { font-size: 12px; color: #aaa; }
+
+.page { max-width: 900px; margin: 0 auto; padding: 20px; }
+
+.notice { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #92400e; margin-bottom: 16px; }
+
+.order-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+.order-card.done { opacity: .6; }
+.order-header { padding: 12px 16px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.order-header .num { font-size: 18px; font-weight: bold; color: #1a1a2e; background: #e0e7ff; padding: 4px 12px; border-radius: 20px; }
+.order-header .customer { font-size: 14px; font-weight: bold; }
+.order-header .addr { font-size: 11px; color: #888; }
+
+.order-body { padding: 14px 16px; }
+.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.info-item { background: #f9fafb; border-radius: 6px; padding: 8px 12px; }
+.info-item label { font-size: 11px; color: #666; display: block; margin-bottom: 3px; }
+.info-item span { font-size: 14px; font-weight: bold; color: #1a1a2e; font-family: monospace; direction: ltr; display: inline-block; }
+
+.print-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.print-count { display: flex; align-items: center; gap: 6px; }
+.print-count label { font-size: 13px; color: #555; }
+.print-count input { width: 70px; padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: monospace; text-align: center; }
+
+.btn-print { padding: 10px 20px; background: #1a1a2e; color: #fff; border: none; border-radius: 7px; font-size: 14px; font-weight: bold; cursor: pointer; font-family: Tahoma; }
+.btn-print:hover { background: #2d2d5e; }
+.btn-print:disabled { background: #aaa; cursor: not-allowed; }
+.btn-done { padding: 10px 16px; background: #22c55e; color: #fff; border: none; border-radius: 7px; font-size: 13px; cursor: pointer; font-family: Tahoma; }
+
+.badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; margin-right: 6px; }
+.badge-ton { background: #fee2e2; color: #991b1b; }
+.badge-free { background: #dbeafe; color: #1e40af; }
+.badge-stamp { background: #fef3c7; color: #92400e; }
+.badge-done { background: #dcfce7; color: #15803d; }
+
+.no-data { text-align: center; padding: 60px; color: #888; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>🖨️ پنل متصدی صدور حواله</h1>
+  <div class="info" id="topInfo"></div>
+</div>
+
+<div class="page">
+  <div class="notice" id="notice">⚠️ قبل از زدن دکمه چاپ، مطمئن شوید ANM باز است و فایل مربوطه انتخاب شده.</div>
+  <div id="orderList"><div class="no-data">در حال بارگذاری...</div></div>
+</div>
+
+<script>
+let freightData = null;
+let allJobs = [];
+
+window.onload = () => {
+  const raw = sessionStorage.getItem("freight_data");
+  if (!raw) {
+    document.getElementById("orderList").innerHTML = '<div class="no-data">داده‌ای یافت نشد. <a href="/">بازگشت</a></div>';
+    return;
+  }
+  freightData = JSON.parse(raw);
+  buildJobs();
+  render();
+};
+
+function buildJobs() {
+  allJobs = [];
+  let idx = 1;
+  for (const dest of freightData.destinations) {
+    for (const o of dest.orders) {
+      allJobs.push({ idx: idx++, dest, order: o, done: false });
+    }
+  }
+}
+
+function render() {
+  const mill = freightData.mill;
+  document.getElementById("topInfo").textContent = `${mill === "arfeh" ? "ارفع" : "چادرملو"} — ${freightData.date} — ${allJobs.length} سفارش`;
+
+  const html = allJobs.map(job => renderJob(job, mill)).join("");
+  document.getElementById("orderList").innerHTML = html || '<div class="no-data">سفارشی موجود نیست</div>';
+}
+
+function renderJob(job, mill) {
+  const o = job.order;
+  const dest = job.dest;
+  const done = job.done;
+
+  let infoHtml = "";
+  let badgeHtml = "";
+  let printInfo = "";
+
+  if (mill === "arfeh") {
+    const wTon = o.weight_kg ? (o.weight_kg/1000).toFixed(0) + " تن" : "—";
+    infoHtml = `
+      <div class="info-item"><label>شماره سفارش</label><span>${o.order_number}</span></div>
+      <div class="info-item"><label>شماره حواله (شروع)</label><span>${o.waybill_from}</span></div>
+      <div class="info-item"><label>شماره حواله (پایان)</label><span>${o.waybill_to}</span></div>
+      <div class="info-item"><label>تعداد برگه</label><span>${o.count}</span></div>
+      <div class="info-item"><label>وزن هر بار</label><span>${wTon}</span></div>
+      <div class="info-item"><label>گرید</label><span>${o.grade||"—"}</span></div>
+    `;
+    printInfo = `سفارش ${o.order_number} | حواله ${o.waybill_from}→${o.waybill_to} | ${o.count} برگه`;
+  } else {
+    const fc = o.final_capacity || o.capacity;
+    const needsStamp = o.tonnage_restricted || (fc && fc !== "آزاد");
+    badgeHtml = needsStamp
+      ? `<span class="badge badge-ton">🔴 ${fc} — مهر بزنید</span>`
+      : `<span class="badge badge-free">🔵 آزاد</span>`;
+    if (o.billet_size) badgeHtml += `<span class="badge badge-stamp">شمش ${o.billet_size}</span>`;
+
+    infoHtml = `
+      <div class="info-item"><label>دستور تحویل (۴ رقم)</label><span>${o.delivery_order_short}</span></div>
+      <div class="info-item"><label>سریال مجوز (شروع)</label><span>${o.permit_from}</span></div>
+      <div class="info-item"><label>سریال مجوز (پایان)</label><span>${o.permit_to}</span></div>
+      <div class="info-item"><label>تعداد</label><span>${o.count}</span></div>
+      <div class="info-item"><label>ظرفیت</label><span>${fc||"—"}</span></div>
+      <div class="info-item"><label>ابعاد شمش</label><span>${o.billet_size||"—"}</span></div>
+    `;
+    printInfo = `دستور ${o.delivery_order_short} | مجوز ${o.permit_from}→${o.permit_to} | ${o.count} برگه`;
+  }
+
+  return `
+    <div class="order-card ${done?'done':''}" id="job-${job.idx}">
+      <div class="order-header">
+        <span class="num">${job.idx}</span>
+        <div>
+          <div class="customer">${dest.customer}</div>
+          ${dest.address ? `<div class="addr">📍 ${dest.address}</div>` : ""}
+        </div>
+        ${badgeHtml}
+        ${done ? '<span class="badge badge-done">✓ چاپ شد</span>' : ""}
+      </div>
+      <div class="order-body">
+        <div class="info-grid">${infoHtml}</div>
+        <div class="print-row">
+          <div class="print-count">
+            <label>تعداد چاپ:</label>
+            <input type="number" id="cnt-${job.idx}" value="${o.count}" min="1">
+          </div>
+          ${!done
+            ? `<button class="btn-print" onclick="sendPrint(${job.idx})">🖨️ ارسال به ANM</button>`
+            : `<button class="btn-done" disabled>✓ انجام شد</button>`
+          }
+          ${done ? "" : `<button class="btn-done" onclick="markDone(${job.idx})">علامت انجام شد</button>`}
+        </div>
+        ${done ? "" : `<div style="font-size:11px;color:#888;margin-top:8px">📋 ${printInfo}</div>`}
+      </div>
+    </div>`;
+}
+
+function sendPrint(idx) {
+  const job = allJobs.find(j => j.idx === idx);
+  if (!job) return;
+
+  const count = parseInt(document.getElementById(`cnt-${idx}`).value) || job.order.count;
+  const o = job.order;
+  const mill = freightData.mill;
+
+  let payload;
+  if (mill === "arfeh") {
+    payload = {
+      mill: "arfeh",
+      order_number: o.order_number,
+      waybill_start: o.waybill_from,
+      count: count,
+      destination: job.dest.customer + (job.dest.address ? " — " + job.dest.address : ""),
+      weight_ton: o.weight_kg ? (o.weight_kg/1000).toFixed(0) : ""
+    };
+  } else {
+    payload = {
+      mill: "chadormaloo",
+      permit_start: o.permit_from,
+      delivery_order_short: o.delivery_order_short,
+      count: count,
+      destination: job.dest.customer,
+      final_capacity: o.final_capacity || o.capacity,
+      tonnage_restricted: o.tonnage_restricted,
+      billet_size: o.billet_size || ""
+    };
+  }
+
+  fetch("/api/send-to-print", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ jobs: [payload] })
+  }).then(r => r.json()).then(data => {
+    if (data.status === "queued") {
+      alert(`✅ دستور چاپ برای "${job.dest.customer}" ارسال شد.\nAutoHotkey شروع می‌کند...`);
+      markDone(idx);
+    }
+  }).catch(() => {
+    // اگر سرور نبود، نمایش اطلاعات برای وارد کردن دستی
+    const msg = mill === "arfeh"
+      ? `سفارش: ${payload.order_number}\nحواله شروع: ${payload.waybill_start}\nتعداد: ${count}\nمقصد: ${payload.destination}`
+      : `دستور: ${payload.delivery_order_short}\nمجوز شروع: ${payload.permit_start}\nتعداد: ${count}\nمقصد: ${payload.destination}`;
+    alert("⚠️ AutoHotkey در دسترس نیست. اطلاعات:\n\n" + msg);
+  });
+}
+
+function markDone(idx) {
+  const job = allJobs.find(j => j.idx === idx);
+  if (job) job.done = true;
+  render();
+  // اسکرول به سفارش بعدی
+  const next = allJobs.find(j => !j.done);
+  if (next) {
+    const el = document.getElementById(`job-${next.idx}`);
+    if (el) el.scrollIntoView({behavior: "smooth", block: "center"});
+  }
+}
+</script>
+</body>
+</html>

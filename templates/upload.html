@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>سیستم مدیریت حواله | آپلود فایل</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Tahoma, Arial, sans-serif; background: #f0f2f5; min-height: 100vh; display: flex; flex-direction: column; }
+
+.topbar { background: #1a1a2e; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+.topbar h1 { font-size: 16px; font-weight: bold; }
+.topbar span { font-size: 13px; color: #aaa; margin-right: auto; }
+
+.main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+.card { background: #fff; border-radius: 12px; padding: 36px; width: 100%; max-width: 520px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+.card h2 { font-size: 18px; margin-bottom: 6px; color: #1a1a2e; }
+.card p { font-size: 13px; color: #666; margin-bottom: 24px; }
+
+.mill-select { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.mill-btn { border: 2px solid #ddd; border-radius: 8px; padding: 14px; text-align: center; cursor: pointer; transition: all .15s; background: #fafafa; }
+.mill-btn:hover { border-color: #1a1a2e; }
+.mill-btn.active { border-color: #1a1a2e; background: #1a1a2e; color: #fff; }
+.mill-btn .mill-name { font-size: 14px; font-weight: bold; display: block; margin-bottom: 3px; }
+.mill-btn .mill-sub { font-size: 11px; opacity: .7; }
+
+.upload-zone { border: 2px dashed #ccc; border-radius: 10px; padding: 32px; text-align: center; cursor: pointer; transition: all .2s; background: #fafafa; margin-bottom: 20px; }
+.upload-zone:hover, .upload-zone.drag { border-color: #1a1a2e; background: #f0f2f5; }
+.upload-zone.has-file { border-color: #22c55e; background: #f0fdf4; }
+.upload-zone .icon { font-size: 40px; margin-bottom: 10px; }
+.upload-zone p { font-size: 14px; color: #555; }
+.upload-zone .filename { font-size: 13px; color: #22c55e; font-weight: bold; margin-top: 6px; }
+#fileInput { display: none; }
+
+.btn-analyze { width: 100%; padding: 14px; background: #1a1a2e; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; font-family: Tahoma; transition: background .15s; }
+.btn-analyze:hover { background: #2d2d5e; }
+.btn-analyze:disabled { background: #aaa; cursor: not-allowed; }
+
+.status { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-top: 16px; display: none; }
+.status.show { display: block; }
+.status.loading { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.status.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.status.success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>📦 سیستم مدیریت حواله بارگیری</h1>
+  <span>باربری آتیه گستر</span>
+</div>
+
+<div class="main">
+  <div class="card">
+    <h2>آپلود فایل اعلام بار</h2>
+    <p>فایل PDF روزانه را انتخاب کنید تا اطلاعات به صورت خودکار استخراج شود</p>
+
+    <div class="mill-select">
+      <div class="mill-btn active" data-mill="arfeh" onclick="selectMill(this)">
+        <span class="mill-name">فولاد ارفع</span>
+        <span class="mill-sub">مشاهده حواله‌های اعلام بار</span>
+      </div>
+      <div class="mill-btn" data-mill="chadormaloo" onclick="selectMill(this)">
+        <span class="mill-name">چادرملو</span>
+        <span class="mill-sub">گزارش لیست محصول جهت باربری</span>
+      </div>
+    </div>
+
+    <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div class="icon">📄</div>
+      <p>فایل PDF را اینجا رها کنید یا کلیک کنید</p>
+      <div class="filename" id="fileName"></div>
+    </div>
+    <input type="file" id="fileInput" accept=".pdf">
+
+    <button class="btn-analyze" id="btnAnalyze" onclick="analyze()" disabled>
+      تحلیل فایل و استخراج اطلاعات
+    </button>
+
+    <div class="status" id="status"></div>
+  </div>
+</div>
+
+<script>
+let selectedFile = null;
+let selectedMill = "arfeh";
+
+function selectMill(el) {
+  document.querySelectorAll(".mill-btn").forEach(b => b.classList.remove("active"));
+  el.classList.add("active");
+  selectedMill = el.dataset.mill;
+}
+
+const dropZone = document.getElementById("dropZone");
+const fileInput = document.getElementById("fileInput");
+
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag"));
+dropZone.addEventListener("drop", e => {
+  e.preventDefault(); dropZone.classList.remove("drag");
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === "application/pdf") setFile(f);
+});
+fileInput.addEventListener("change", e => { if (e.target.files[0]) setFile(e.target.files[0]); });
+
+function setFile(f) {
+  selectedFile = f;
+  document.getElementById("fileName").textContent = f.name;
+  dropZone.classList.add("has-file");
+  document.getElementById("btnAnalyze").disabled = false;
+}
+
+function showStatus(type, msg) {
+  const s = document.getElementById("status");
+  s.className = "status show " + type;
+  s.innerHTML = msg;
+}
+
+async function analyze() {
+  if (!selectedFile) return;
+  document.getElementById("btnAnalyze").disabled = true;
+  showStatus("loading", "⏳ در حال تحلیل فایل... (ممکن است ۲۰-۳۰ ثانیه طول بکشد)");
+
+  const fd = new FormData();
+  fd.append("pdf", selectedFile);
+  fd.append("mill", selectedMill);
+
+  try {
+    const res = await fetch("/api/analyze", { method: "POST", body: fd });
+    const data = await res.json();
+
+    if (data.error) {
+      showStatus("error", "❌ " + data.error);
+      document.getElementById("btnAnalyze").disabled = false;
+      return;
+    }
+
+    // ذخیره در sessionStorage و انتقال به پنل مدیر
+    sessionStorage.setItem("freight_data", JSON.stringify(data.data));
+    showStatus("success", "✅ تحلیل موفق — در حال انتقال به پنل بررسی...");
+    setTimeout(() => window.location.href = "/review", 800);
+
+  } catch (err) {
+    showStatus("error", "❌ خطا در اتصال به سرور: " + err.message);
+    document.getElementById("btnAnalyze").disabled = false;
+  }
+}
+</script>
+</body>
+</html>
